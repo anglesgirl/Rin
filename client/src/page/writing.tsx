@@ -1,22 +1,27 @@
 import Editor from '@monaco-editor/react';
 import i18n from 'i18next';
 import _ from 'lodash';
-import {editor} from 'monaco-editor';
-import {Calendar} from 'primereact/calendar';
+import { editor } from 'monaco-editor';
+import { Calendar } from 'primereact/calendar';
 import 'primereact/resources/primereact.css';
 import 'primereact/resources/themes/lara-light-indigo/theme.css';
-import React, {useCallback, useEffect, useRef, useState} from "react";
-import {Helmet} from "react-helmet";
-import {useTranslation} from "react-i18next";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Helmet } from "react-helmet";
+import { useTranslation } from "react-i18next";
 import Loading from 'react-loading';
-import {ShowAlertType, useAlert} from '../components/dialog';
-import {Checkbox, Input} from "../components/input";
-import {Markdown} from "../components/markdown";
-import {client} from "../main";
-import {headersWithAuth} from "../utils/auth";
-import {Cache, useCache} from '../utils/cache';
-import {siteName} from "../utils/constants";
-import {useColorMode} from "../utils/darkModeUtils";
+// 新增：引入代码格式化工具
+import prettier from 'prettier';
+import parserMarkdown from 'prettier/parser-markdown';
+import parserBabel from 'prettier/parser-babel';
+
+import { ShowAlertType, useAlert } from '../components/dialog';
+import { Checkbox, Input } from "../components/input";
+import { Markdown } from "../components/markdown";
+import { client } from "../main";
+import { headersWithAuth } from "../utils/auth";
+import { Cache, useCache } from '../utils/cache';
+import { siteName } from "../utils/constants";
+import { useColorMode } from "../utils/darkModeUtils";
 import mermaid from 'mermaid';
 
 async function publish({
@@ -152,9 +157,6 @@ function uploadImage(file: File, onSuccess: (url: string) => void, showAlert: Sh
     });
 }
 
-
-
-// 写作页面
 export function WritingPage({ id }: { id?: number }) {
   const { t } = useTranslation();
   const colorMode = useColorMode();
@@ -172,6 +174,70 @@ export function WritingPage({ id }: { id?: number }) {
   const [uploading, setUploading] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const { showAlert, AlertUI } = useAlert()
+
+  // 新增：MD编辑器快捷功能（加粗、斜体、列表、标题）
+  const handleMdShortcut = (type: 'bold' | 'italic' | 'list' | 'heading') => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const selection = editor.getSelection();
+    if (!selection) return;
+
+    const selectedText = editor.getValueInRange(selection);
+    let replacement = '';
+
+    switch (type) {
+      case 'bold':
+        replacement = `**${selectedText || '粗体文本'}**`;
+        break;
+      case 'italic':
+        replacement = `*${selectedText || '斜体文本'}*`;
+        break;
+      case 'list':
+        replacement = `- ${selectedText || '列表项'}`;
+        break;
+      case 'heading':
+        replacement = `## ${selectedText || '二级标题'}`;
+        break;
+    }
+
+    editor.executeEdits(undefined, [{
+      range: selection,
+      text: replacement
+    }]);
+  };
+
+  // 新增：代码优化工具（基于prettier）
+  const optimizeCode = async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    try {
+      setUploading(true);
+      const currentContent = editor.getValue();
+
+      // 区分内容类型进行格式化
+      const isMarkdown = currentContent.includes('#') || currentContent.includes('**') || currentContent.includes('![');
+      const formatted = await prettier.format(currentContent, {
+        parser: isMarkdown ? 'markdown' : 'babel',
+        plugins: isMarkdown ? [parserMarkdown] : [parserBabel],
+        printWidth: 80,
+        tabWidth: 2,
+        useTabs: false,
+        proseWrap: 'preserve'
+      });
+
+      editor.setValue(formatted);
+      setContent(formatted);
+      cache.set("content", formatted);
+      showAlert(t("code.optimize.success") || "代码优化成功");
+    } catch (error: any) {
+      showAlert(t("code.optimize.failed", { error: error.message }) || `优化失败：${error.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   function publishButton() {
     if (publishing) return;
     const tagsplit =
@@ -223,11 +289,8 @@ export function WritingPage({ id }: { id?: number }) {
     }
   }
 
-
   const handlePaste = async (event: React.ClipboardEvent<HTMLDivElement>) => {
-    // Access the clipboard data using event.clipboardData
     const clipboardData = event.clipboardData;
-    // only if clipboard payload is file
     if (clipboardData.files.length === 1) {
       const editor = editorRef.current;
       if (!editor) return;
@@ -247,12 +310,12 @@ export function WritingPage({ id }: { id?: number }) {
   };
 
   function UploadImageButton() {
-    const { showAlert, AlertUI } = useAlert();
+    const { showAlert } = useAlert();
     const uploadRef = useRef<HTMLInputElement>(null);
     const t = i18n.t
     const upChange = (event: any) => {
       for (let i = 0; i < event.currentTarget.files.length; i++) {
-        const file = event.currentTarget.files[i]; ///获得input的第一个图片
+        const file = event.currentTarget.files[i];
         if (file.size > 5 * 1024000) {
           showAlert(t("upload.failed$size", { size: 5 }))
           uploadRef.current!.value = "";
@@ -286,6 +349,7 @@ export function WritingPage({ id }: { id?: number }) {
       </button>
     )
   }
+
   useEffect(() => {
     if (id) {
       client
@@ -308,6 +372,7 @@ export function WritingPage({ id }: { id?: number }) {
         });
     }
   }, []);
+
   const debouncedUpdate = useCallback(
     _.debounce(() => {
       mermaid.initialize({
@@ -330,9 +395,11 @@ export function WritingPage({ id }: { id?: number }) {
     }, 100),
     []
   );
+
   useEffect(() => {
     debouncedUpdate();
   }, [content, debouncedUpdate]);
+
   function MetaInput({ className }: { className?: string }) {
     return (
       <>
@@ -414,6 +481,50 @@ export function WritingPage({ id }: { id?: number }) {
           <div className="bg-w rounded-2xl shadow-xl shadow-light p-4">
             {MetaInput({ className: "visible md:hidden mb-8" })}
             <div className="flex flex-col mx-4 my-2 md:mx-0 md:my-0 gap-2">
+              {/* 新增：MD快捷工具栏和代码优化按钮 */}
+              <div className="flex flex-row flex-wrap gap-2 mb-2">
+                <button 
+                  onClick={() => handleMdShortcut('bold')}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  <i className="ri-bold"></i> 粗体
+                </button>
+                <button 
+                  onClick={() => handleMdShortcut('italic')}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  <i className="ri-italic"></i> 斜体
+                </button>
+                <button 
+                  onClick={() => handleMdShortcut('list')}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  <i className="ri-list-ordered"></i> 列表
+                </button>
+                <button 
+                  onClick={() => handleMdShortcut('heading')}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  <i className="ri-heading"></i> 标题
+                </button>
+                <button 
+                  onClick={optimizeCode}
+                  className="px-2 py-1 border rounded text-sm ml-auto"
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <>
+                      <Loading type="spin" color="#FC466B" height={14} width={14} />
+                      优化中...
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-code-s-slash"></i> 优化代码
+                    </>
+                  )}
+                </button>
+              </div>
+
               <div className="flex flex-row space-x-2">
                 <button className={`${preview === 'edit' ? "text-theme" : ""}`} onClick={() => setPreview('edit')}> {t("edit")} </button>
                 <button className={`${preview === 'preview' ? "text-theme" : ""}`} onClick={() => setPreview('preview')}> {t("preview")} </button>
@@ -461,7 +572,6 @@ export function WritingPage({ id }: { id?: number }) {
                       defaultLanguage="markdown"
                       className=""
                       value={content}
-                      // onPaste={handlePaste}
                       onChange={(data, _) => {
                         cache.set("content", data ?? "");
                         setContent(data ?? "");
@@ -518,7 +628,5 @@ export function WritingPage({ id }: { id?: number }) {
       </div>
       <AlertUI />
     </>
-
   );
 }
-
