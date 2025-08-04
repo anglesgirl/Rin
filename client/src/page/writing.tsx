@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useTranslation } from "react-i18next";
 import Loading from 'react-loading';
-// 新增：引入代码格式化工具
+import { RiBold, RiItalic, RiListOrdered, RiHeading, RiCodeSSlash, RiImageAddLine } from 'react-icons/ri';
 import prettier from 'prettier';
 import parserMarkdown from 'prettier/parser-markdown';
 import parserBabel from 'prettier/parser-babel';
@@ -24,6 +24,7 @@ import { siteName } from "../utils/constants";
 import { useColorMode } from "../utils/darkModeUtils";
 import mermaid from 'mermaid';
 
+// 发布文章
 async function publish({
   title,
   alias,
@@ -59,16 +60,10 @@ async function publish({
       draft,
       createdAt,
     },
-    {
-      headers: headersWithAuth(),
-    }
+    { headers: headersWithAuth() }
   );
-  if (onCompleted) {
-    onCompleted();
-  }
-  if (error) {
-    showAlert(error.value as string);
-  }
+  onCompleted?.();
+  if (error) showAlert(error.value as string);
   if (data && typeof data !== "string") {
     showAlert(t("publish.success"), () => {
       Cache.with().clear();
@@ -77,6 +72,7 @@ async function publish({
   }
 }
 
+// 更新文章
 async function update({
   id,
   title,
@@ -114,16 +110,11 @@ async function update({
       draft,
       createdAt,
     },
-    {
-      headers: headersWithAuth(),
-    }
+    { headers: headersWithAuth() }
   );
-  if (onCompleted) {
-    onCompleted();
-  }
-  if (error) {
-    showAlert(error.value as string);
-  } else {
+  onCompleted?.();
+  if (error) showAlert(error.value as string);
+  else {
     showAlert(t("update.success"), () => {
       Cache.with(id).clear();
       window.location.href = "/feed/" + id;
@@ -131,25 +122,17 @@ async function update({
   }
 }
 
+// 上传图片
 function uploadImage(file: File, onSuccess: (url: string) => void, showAlert: ShowAlertType) {
   const t = i18n.t
   client.storage.index
     .post(
-      {
-        key: file.name,
-        file: file,
-      },
-      {
-        headers: headersWithAuth(),
-      }
+      { key: file.name, file },
+      { headers: headersWithAuth() }
     )
     .then(({ data, error }) => {
-      if (error) {
-        showAlert(t("upload.failed", { error: error.value }));
-      }
-      if (data) {
-        onSuccess(data);
-      }
+      if (error) showAlert(t("upload.failed", { error: error.value }));
+      if (data) onSuccess(data);
     })
     .catch((e: any) => {
       console.error(e);
@@ -162,6 +145,8 @@ export function WritingPage({ id }: { id?: number }) {
   const colorMode = useColorMode();
   const cache = Cache.with(id);
   const editorRef = useRef<editor.IStandaloneCodeEditor>();
+  
+  // 状态管理
   const [title, setTitle] = cache.useCache("title", "");
   const [summary, setSummary] = cache.useCache("summary", "");
   const [tags, setTags] = cache.useCache("tags", "");
@@ -171,11 +156,11 @@ export function WritingPage({ id }: { id?: number }) {
   const [content, setContent] = cache.useCache("content", "");
   const [createdAt, setCreatedAt] = useState<Date | undefined>(new Date());
   const [preview, setPreview] = useCache<'edit' | 'preview' | 'comparison'>("preview", 'edit');
-  const [uploading, setUploading] = useState(false)
-  const [publishing, setPublishing] = useState(false)
-  const { showAlert, AlertUI } = useAlert()
+  const [uploading, setUploading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const { showAlert, AlertUI } = useAlert();
 
-  // 新增：MD编辑器快捷功能（加粗、斜体、列表、标题）
+  // MD快捷功能（修正了getValueInRange的调用方式）
   const handleMdShortcut = (type: 'bold' | 'italic' | 'list' | 'heading') => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -183,9 +168,12 @@ export function WritingPage({ id }: { id?: number }) {
     const selection = editor.getSelection();
     if (!selection) return;
 
-    const selectedText = editor.getValueInRange(selection);
-    let replacement = '';
+    // 关键修正：通过模型获取选中文本
+    const model = editor.getModel();
+    if (!model) return;
+    const selectedText = model.getValueInRange(selection);
 
+    let replacement = '';
     switch (type) {
       case 'bold':
         replacement = `**${selectedText || '粗体文本'}**`;
@@ -201,13 +189,10 @@ export function WritingPage({ id }: { id?: number }) {
         break;
     }
 
-    editor.executeEdits(undefined, [{
-      range: selection,
-      text: replacement
-    }]);
+    editor.executeEdits(undefined, [{ range: selection, text: replacement }]);
   };
 
-  // 新增：代码优化工具（基于prettier）
+  // 代码优化工具
   const optimizeCode = async () => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -216,7 +201,7 @@ export function WritingPage({ id }: { id?: number }) {
       setUploading(true);
       const currentContent = editor.getValue();
 
-      // 区分内容类型进行格式化
+      // 区分内容类型格式化
       const isMarkdown = currentContent.includes('#') || currentContent.includes('**') || currentContent.includes('![');
       const formatted = await prettier.format(currentContent, {
         parser: isMarkdown ? 'markdown' : 'babel',
@@ -238,232 +223,217 @@ export function WritingPage({ id }: { id?: number }) {
     }
   };
 
-  function publishButton() {
+  // 发布按钮逻辑
+  const handlePublish = () => {
     if (publishing) return;
-    const tagsplit =
-      tags
-        .split("#")
-        .filter((tag) => tag !== "")
-        .map((tag) => tag.trim()) || [];
+    const tagsplit = tags.split("#").filter(tag => tag !== "").map(tag => tag.trim()) || [];
+    
     if (id !== undefined) {
-      setPublishing(true)
+      setPublishing(true);
       update({
-        id,
-        title,
-        content,
-        summary,
-        alias,
-        tags: tagsplit,
-        draft,
-        listed,
-        createdAt,
-        onCompleted: () => {
-          setPublishing(false)
-        },
+        id, title, content, summary, alias, tags: tagsplit,
+        draft, listed, createdAt,
+        onCompleted: () => setPublishing(false),
         showAlert
       });
     } else {
-      if (!title) {
-        showAlert(t("title_empty"))
-        return;
-      }
-      if (!content) {
-        showAlert(t("content.empty"))
-        return;
-      }
-      setPublishing(true)
+      if (!title) return showAlert(t("title_empty"));
+      if (!content) return showAlert(t("content.empty"));
+      
+      setPublishing(true);
       publish({
-        title,
-        content,
-        summary,
-        tags: tagsplit,
-        draft,
-        alias,
-        listed,
-        createdAt,
-        onCompleted: () => {
-          setPublishing(false)
-        },
+        title, content, summary, tags: tagsplit, draft, alias,
+        listed, createdAt,
+        onCompleted: () => setPublishing(false),
         showAlert
       });
     }
-  }
+  };
 
-  const handlePaste = async (event: React.ClipboardEvent<HTMLDivElement>) => {
+  // 粘贴上传图片
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
     const clipboardData = event.clipboardData;
     if (clipboardData.files.length === 1) {
+      event.preventDefault();
       const editor = editorRef.current;
       if (!editor) return;
+      
       editor.trigger(undefined, "undo", undefined);
-      setUploading(true)
+      setUploading(true);
       const myfile = clipboardData.files[0] as File;
+      
       uploadImage(myfile, (url) => {
         const selection = editor.getSelection();
         if (!selection) return;
+        
         editor.executeEdits(undefined, [{
           range: selection,
           text: `![${myfile.name}](${url})\n`,
         }]);
-        setUploading(false)
+        setUploading(false);
       }, showAlert);
     }
   };
 
+  // 图片上传按钮
   function UploadImageButton() {
     const { showAlert } = useAlert();
     const uploadRef = useRef<HTMLInputElement>(null);
-    const t = i18n.t
+    const t = i18n.t;
+    
     const upChange = (event: any) => {
       for (let i = 0; i < event.currentTarget.files.length; i++) {
         const file = event.currentTarget.files[i];
         if (file.size > 5 * 1024000) {
-          showAlert(t("upload.failed$size", { size: 5 }))
+          showAlert(t("upload.failed$size", { size: 5 }));
           uploadRef.current!.value = "";
-        } else {
-          const editor = editorRef.current;
-          if (!editor) return;
-          const selection = editor.getSelection();
-          if (!selection) return;
-          setUploading(true)
-          uploadImage(file, (url) => {
-            setUploading(false)
-            editor.executeEdits(undefined, [{
-              range: selection,
-              text: `![${file.name}](${url})\n`,
-            }]);
-          }, showAlert);
+          return;
         }
+
+        const editor = editorRef.current;
+        if (!editor) return;
+        const selection = editor.getSelection();
+        if (!selection) return;
+        
+        setUploading(true);
+        uploadImage(file, (url) => {
+          setUploading(false);
+          editor.executeEdits(undefined, [{
+            range: selection,
+            text: `![${file.name}](${url})\n`,
+          }]);
+        }, showAlert);
       }
     };
+    
     return (
       <button onClick={() => uploadRef.current?.click()}>
-        <input
+        <Input
           ref={uploadRef}
           onChange={upChange}
           className="hidden"
           type="file"
           accept="image/gif,image/jpeg,image/jpg,image/png"
         />
-        <i className="ri-image-add-line" />
+        <RiImageAddLine />
         <AlertUI />
       </button>
-    )
+    );
   }
 
+  // 初始化文章数据
   useEffect(() => {
-    if (id) {
-      client
-        .feed({ id })
-        .get({
-          headers: headersWithAuth(),
-        })
-        .then(({ data }) => {
-          if (data && typeof data !== "string") {
-            if (title == "" && data.title) setTitle(data.title);
-            if (tags == "" && data.hashtags)
-              setTags(data.hashtags.map(({ name }) => `#${name}`).join(" "));
-            if (alias == "" && data.alias) setAlias(data.alias);
-            if (content == "") setContent(data.content);
-            if (summary == "") setSummary(data.summary);
-            setListed(data.listed === 1);
-            setDraft(data.draft === 1);
-            setCreatedAt(new Date(data.createdAt));
-          }
-        });
-    }
-  }, []);
+    if (!id) return;
+    client
+      .feed({ id })
+      .get({ headers: headersWithAuth() })
+      .then(({ data }) => {
+        if (data && typeof data !== "string") {
+          if (title === "" && data.title) setTitle(data.title);
+          if (tags === "" && data.hashtags)
+            setTags(data.hashtags.map(({ name }: any) => `#${name}`).join(" "));
+          if (alias === "" && data.alias) setAlias(data.alias);
+          if (content === "") setContent(data.content);
+          if (summary === "") setSummary(data.summary);
+          setListed(data.listed === 1);
+          setDraft(data.draft === 1);
+          setCreatedAt(new Date(data.createdAt));
+        }
+      });
+  }, [id]);
 
+  // Mermaid渲染防抖
   const debouncedUpdate = useCallback(
     _.debounce(() => {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: "default",
-      });
+      mermaid.initialize({ startOnLoad: false, theme: "default" });
       mermaid.run({
         suppressErrors: true,
         nodes: document.querySelectorAll("pre.mermaid_default")
-      }).then(()=>{
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: "dark",
-        });
+      }).then(() => {
+        mermaid.initialize({ startOnLoad: false, theme: "dark" });
         mermaid.run({
           suppressErrors: true,
           nodes: document.querySelectorAll("pre.mermaid_dark")
         });
-      })
+      });
     }, 100),
     []
   );
 
   useEffect(() => {
     debouncedUpdate();
+    return () => debouncedUpdate.cancel();
   }, [content, debouncedUpdate]);
 
+  // 元数据输入组件
   function MetaInput({ className }: { className?: string }) {
     return (
-      <>
-        <div className={className}>
-          <Input
-            id={id}
-            value={title}
-            setValue={setTitle}
-            placeholder={t("title")}
+      <div className={className}>
+        <Input
+          id={id}
+          value={title}
+          setValue={setTitle}
+          placeholder={t("title")}
+        />
+        <Input
+          id={id}
+          value={summary}
+          setValue={setSummary}
+          placeholder={t("summary")}
+          className="mt-4"
+        />
+        <Input
+          id={id}
+          value={tags}
+          setValue={setTags}
+          placeholder={t("tags")}
+          className="mt-4"
+        />
+        <Input
+          id={id}
+          value={alias}
+          setValue={setAlias}
+          placeholder={t("alias")}
+          className="mt-4"
+        />
+        <div
+          className="select-none flex flex-row justify-between items-center mt-6 mb-2 px-4"
+          onClick={() => setDraft(!draft)}
+        >
+          <p>{t('visible.self_only')}</p>
+          <Checkbox
+            id="draft"
+            value={draft}
+            setValue={setDraft}
+            placeholder={t('draft')}
           />
-          <Input
-            id={id}
-            value={summary}
-            setValue={setSummary}
-            placeholder={t("summary")}
-            className="mt-4"
-          />
-          <Input
-            id={id}
-            value={tags}
-            setValue={setTags}
-            placeholder={t("tags")}
-            className="mt-4"
-          />
-          <Input
-            id={id}
-            value={alias}
-            setValue={setAlias}
-            placeholder={t("alias")}
-            className="mt-4"
-          />
-          <div
-            className="select-none flex flex-row justify-between items-center mt-6 mb-2 px-4"
-            onClick={() => setDraft(!draft)}
-          >
-            <p>{t('visible.self_only')}</p>
-            <Checkbox
-              id="draft"
-              value={draft}
-              setValue={setDraft}
-              placeholder={t('draft')}
-            />
-          </div>
-          <div
-            className="select-none flex flex-row justify-between items-center mt-6 mb-2 px-4"
-            onClick={() => setListed(!listed)}
-          >
-            <p>{t('listed')}</p>
-            <Checkbox
-              id="listed"
-              value={listed}
-              setValue={setListed}
-              placeholder={t('listed')}
-            />
-          </div>
-          <div className="select-none flex flex-row justify-between items-center mt-4 mb-2 pl-4">
-            <p className="break-keep mr-2">
-              {t('created_at')}
-            </p>
-            <Calendar value={createdAt} onChange={(e) => setCreatedAt(e.value || undefined)} showTime touchUI hourFormat="24" />
-          </div>
         </div>
-      </>
-    )
+        <div
+          className="select-none flex flex-row justify-between items-center mt-6 mb-2 px-4"
+          onClick={() => setListed(!listed)}
+        >
+          <p>{t('listed')}</p>
+          <Checkbox
+            id="listed"
+            value={listed}
+            setValue={setListed}
+            placeholder={t('listed')}
+          />
+        </div>
+        <div className="select-none flex flex-row justify-between items-center mt-4 mb-2 pl-4">
+          <p className="break-keep mr-2">
+            {t('created_at')}
+          </p>
+          <Calendar 
+            value={createdAt} 
+            onChange={(e) => setCreatedAt(e.value || undefined)} 
+            showTime 
+            touchUI 
+            hourFormat="24" 
+          />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -478,34 +448,34 @@ export function WritingPage({ id }: { id?: number }) {
       </Helmet>
       <div className="grid grid-cols-1 md:grid-cols-3 t-primary mt-2">
         <div className="col-span-2 pb-8">
-          <div className="bg-w rounded-2xl shadow-xl shadow-light p-4">
+          <div className="bg-white rounded-2xl shadow-xl shadow-light p-4">
             {MetaInput({ className: "visible md:hidden mb-8" })}
             <div className="flex flex-col mx-4 my-2 md:mx-0 md:my-0 gap-2">
-              {/* 新增：MD快捷工具栏和代码优化按钮 */}
+              {/* MD快捷工具栏和代码优化按钮 */}
               <div className="flex flex-row flex-wrap gap-2 mb-2">
                 <button 
                   onClick={() => handleMdShortcut('bold')}
                   className="px-2 py-1 border rounded text-sm"
                 >
-                  <i className="ri-bold"></i> 粗体
+                  <RiBold className="inline mr-1" /> 粗体
                 </button>
                 <button 
                   onClick={() => handleMdShortcut('italic')}
                   className="px-2 py-1 border rounded text-sm"
                 >
-                  <i className="ri-italic"></i> 斜体
+                  <RiItalic className="inline mr-1" /> 斜体
                 </button>
                 <button 
                   onClick={() => handleMdShortcut('list')}
                   className="px-2 py-1 border rounded text-sm"
                 >
-                  <i className="ri-list-ordered"></i> 列表
+                  <RiListOrdered className="inline mr-1" /> 列表
                 </button>
                 <button 
                   onClick={() => handleMdShortcut('heading')}
                   className="px-2 py-1 border rounded text-sm"
                 >
-                  <i className="ri-heading"></i> 标题
+                  <RiHeading className="inline mr-1" /> 标题
                 </button>
                 <button 
                   onClick={optimizeCode}
@@ -514,47 +484,67 @@ export function WritingPage({ id }: { id?: number }) {
                 >
                   {uploading ? (
                     <>
-                      <Loading type="spin" color="#FC466B" height={14} width={14} />
+                      <Loading type="spin" color="#FC466B" height={14} width={14} className="inline mr-1" />
                       优化中...
                     </>
                   ) : (
                     <>
-                      <i className="ri-code-s-slash"></i> 优化代码
+                      <RiCodeSSlash className="inline mr-1" /> 优化代码
                     </>
                   )}
                 </button>
               </div>
 
+              {/* 预览模式切换 */}
               <div className="flex flex-row space-x-2">
-                <button className={`${preview === 'edit' ? "text-theme" : ""}`} onClick={() => setPreview('edit')}> {t("edit")} </button>
-                <button className={`${preview === 'preview' ? "text-theme" : ""}`} onClick={() => setPreview('preview')}> {t("preview")} </button>
-                <button className={`${preview === 'comparison' ? "text-theme" : ""}`} onClick={() => setPreview('comparison')}> {t("comparison")} </button>
+                <button 
+                  className={`${preview === 'edit' ? "text-theme" : ""}`} 
+                  onClick={() => setPreview('edit')}
+                >
+                  {t("edit")}
+                </button>
+                <button 
+                  className={`${preview === 'preview' ? "text-theme" : ""}`} 
+                  onClick={() => setPreview('preview')}
+                >
+                  {t("preview")}
+                </button>
+                <button 
+                  className={`${preview === 'comparison' ? "text-theme" : ""}`} 
+                  onClick={() => setPreview('comparison')}
+                >
+                  {t("comparison")}
+                </button>
                 <div className="flex-grow" />
-                {uploading &&
+                {uploading && (
                   <div className="flex flex-row space-x-2 items-center">
                     <Loading type="spin" color="#FC466B" height={16} width={16} />
                     <span className="text-sm text-neutral-500">{t('uploading')}</span>
                   </div>
-                }
+                )}
               </div>
+
+              {/* 编辑器与预览区 */}
               <div className={`grid grid-cols-1 ${preview === 'comparison' ? "sm:grid-cols-2" : ""}`}>
-                <div className={"flex flex-col " + (preview === 'preview' ? "hidden" : "")}>
+                <div className={`flex flex-col ${preview === 'preview' ? "hidden" : ""}`}>
                   <div className="flex flex-row justify-start mb-2">
                     <UploadImageButton />
                   </div>
                   <div
-                    className={"relative"}
+                    className="relative"
                     onDrop={(e) => {
                       e.preventDefault();
                       const editor = editorRef.current;
                       if (!editor) return;
+                      
                       for (let i = 0; i < e.dataTransfer.files.length; i++) {
                         const selection = editor.getSelection();
                         if (!selection) return;
                         const file = e.dataTransfer.files[i];
-                        setUploading(true)
+                        
+                        setUploading(true);
                         uploadImage(file, (url) => {
-                          setUploading(false)
+                          setUploading(false);
                           editor.executeEdits(undefined, [{
                             range: selection,
                             text: `![${file.name}](${url})\n`,
@@ -565,14 +555,11 @@ export function WritingPage({ id }: { id?: number }) {
                     onPaste={handlePaste}
                   >
                     <Editor
-                      onMount={(editor, _) => {
-                        editorRef.current = editor
-                      }}
+                      onMount={(editor) => editorRef.current = editor}
                       height="600px"
                       defaultLanguage="markdown"
-                      className=""
                       value={content}
-                      onChange={(data, _) => {
+                      onChange={(data) => {
                         cache.set("content", data ?? "");
                         setContent(data ?? "");
                       }}
@@ -588,40 +575,36 @@ export function WritingPage({ id }: { id?: number }) {
                   </div>
                 </div>
                 <div
-                  className={"px-4 h-[600px] overflow-y-scroll " + (preview !== 'edit' ? "" : "hidden")}
+                  className={`px-4 h-[600px] overflow-y-scroll ${preview !== 'edit' ? "" : "hidden"}`}
                 >
-                  <Markdown content={content ? content : "> No content now. Write on the left side."} />
+                  <Markdown content={content || "> No content now. Write on the left side."} />
                 </div>
               </div>
             </div>
           </div>
+          
+          {/* 移动端发布按钮 */}
           <div className="visible md:hidden flex flex-row justify-center mt-8">
             <button
-              onClick={publishButton}
+              onClick={handlePublish}
               className="basis-1/2 bg-theme text-white py-4 rounded-full shadow-xl shadow-light flex flex-row justify-center items-center space-x-2"
             >
-              {publishing &&
-                <Loading type="spin" height={16} width={16} />
-              }
-              <span>
-                {t('publish.title')}
-              </span>
+              {publishing && <Loading type="spin" height={16} width={16} />}
+              <span>{t('publish.title')}</span>
             </button>
           </div>
         </div>
-        <div className="hidden md:visible max-w-96 md:flex flex-col">
-          {MetaInput({ className: "bg-w rounded-2xl shadow-xl shadow-light p-4 mx-8" })}
+
+        {/* 桌面端侧边栏 */}
+        <div className="hidden md:block max-w-96 md:flex flex-col">
+          {MetaInput({ className: "bg-white rounded-2xl shadow-xl shadow-light p-4 mx-8" })}
           <div className="flex flex-row justify-center mt-8">
             <button
-              onClick={publishButton}
+              onClick={handlePublish}
               className="basis-1/2 bg-theme text-white py-4 rounded-full shadow-xl shadow-light flex flex-row justify-center items-center space-x-2"
             >
-              {publishing &&
-                <Loading type="spin" height={16} width={16} />
-              }
-              <span>
-                {t('publish.title')}
-              </span>
+              {publishing && <Loading type="spin" height={16} width={16} />}
+              <span>{t('publish.title')}</span>
             </button>
           </div>
         </div>
