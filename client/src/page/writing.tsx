@@ -9,7 +9,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useTranslation } from "react-i18next";
 import Loading from 'react-loading';
-import { RiBold, RiItalic, RiListOrdered, RiHeading, RiCodeSSlash, RiImageAddLine } from 'react-icons/ri';
+// 修正图标名称
+import { RiBold, RiItalic, RiListOrdered, RiHeading, RiCodeSSlashFill, RiImageAddLine } from 'react-icons/ri';
 import prettier from 'prettier';
 import parserMarkdown from 'prettier/parser-markdown';
 import parserBabel from 'prettier/parser-babel';
@@ -160,7 +161,7 @@ export function WritingPage({ id }: { id?: number }) {
   const [publishing, setPublishing] = useState(false);
   const { showAlert, AlertUI } = useAlert();
 
-  // MD快捷功能（修正了getValueInRange的调用方式）
+  // MD快捷功能
   const handleMdShortcut = (type: 'bold' | 'italic' | 'list' | 'heading') => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -168,7 +169,7 @@ export function WritingPage({ id }: { id?: number }) {
     const selection = editor.getSelection();
     if (!selection) return;
 
-    // 关键修正：通过模型获取选中文本
+    // 通过模型获取选中文本
     const model = editor.getModel();
     if (!model) return;
     const selectedText = model.getValueInRange(selection);
@@ -275,7 +276,7 @@ export function WritingPage({ id }: { id?: number }) {
     }
   };
 
-  // 图片上传按钮
+  // 图片上传按钮（修正ref问题，使用原生input）
   function UploadImageButton() {
     const { showAlert } = useAlert();
     const uploadRef = useRef<HTMLInputElement>(null);
@@ -308,7 +309,8 @@ export function WritingPage({ id }: { id?: number }) {
     
     return (
       <button onClick={() => uploadRef.current?.click()}>
-        <Input
+        {/* 修正：使用原生input而非自定义Input组件 */}
+        <input
           ref={uploadRef}
           onChange={upChange}
           className="hidden"
@@ -489,7 +491,8 @@ export function WritingPage({ id }: { id?: number }) {
                     </>
                   ) : (
                     <>
-                      <RiCodeSSlash className="inline mr-1" /> 优化代码
+                      {/* 使用修正后的图标 */}
+                      <RiCodeSSlashFill className="inline mr-1" /> 优化代码
                     </>
                   )}
                 </button>
